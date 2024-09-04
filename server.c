@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 
 #define PORTA 2000
 #define LEN 1024
@@ -18,29 +19,96 @@ typedef struct {
 
 Cliente clientes[MAX_CLIENTS];
 int num_clientes = 0;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
-void enviar_para_cliente(int destinatario_socket, const char* mensagem) {
-    send(destinatario_socket, mensagem, strlen(mensagem), 0);
-}
+void* gerenciar_cliente(void* arg) {
+    int cliente_socket = *((int*)arg);
+    char buffer[LEN];
+    char nome[50];
 
-int encontrar_cliente_por_nome(const char* nome) {
-    for (int i = 0; i < num_clientes; i++) {
-        if (strcmp(clientes[i].name, nome) == 0) {
-            return clientes[i].socket;
+    // Receber o nome do cliente
+    memset(buffer, 0x0, LEN);
+    recv(cliente_socket, buffer, LEN, 0);
+    strcpy(nome, buffer);
+
+    printf("Cliente conectado: %s\n", nome);
+
+    // Adicionar o cliente à lista
+    pthread_mutex_lock(&mutex);
+    if (num_clientes < MAX_CLIENTS) {
+        clientes[num_clientes].socket = cliente_socket;
+        strcpy(clientes[num_clientes].name, nome);
+        num_clientes++;
+    } else {
+        printf("Número máximo de clientes alcançado.\n");
+        close(cliente_socket);
+        pthread_mutex_unlock(&mutex);
+        return NULL;
+    }
+    pthread_mutex_unlock(&mutex);
+
+    while (1) {
+        memset(buffer, 0x0, LEN);
+        int bytes = recv(cliente_socket, buffer, LEN, 0);
+        if (bytes <= 0) {
+            printf("Cliente desconectado: %s\n", nome);
+            close(cliente_socket);
+            pthread_mutex_lock(&mutex);
+            // Remover cliente da lista
+            for (int i = 0; i < num_clientes; i++) {
+                if (clientes[i].socket == cliente_socket) {
+                    for (int j = i; j < num_clientes - 1; j++) {
+                        clientes[j] = clientes[j + 1];
+                    }
+                    num_clientes--;
+                    break;
+                }
+            }
+            pthread_mutex_unlock(&mutex);
+            return NULL;
+        }
+
+        buffer[bytes] = '\0';
+        printf("Mensagem recebida de %s: %s\n", nome, buffer);
+
+        // Enviar mensagem para o destinatário
+        char comando[LEN];
+        sscanf(buffer, "%s", comando);
+
+        if (strcmp(comando, "/msg") == 0) {
+            char destinatario[50];
+            char mensagem[LEN];
+            sscanf(buffer, "%s %s %[^\n]", comando, destinatario, mensagem);
+
+            pthread_mutex_lock(&mutex);
+            int destinatario_socket = -1;
+            for (int i = 0; i < num_clientes; i++) {
+                if (strcmp(clientes[i].name, destinatario) == 0) {
+                    destinatario_socket = clientes[i].socket;
+                    break;
+                }
+            }
+            pthread_mutex_unlock(&mutex);
+
+            if (destinatario_socket != -1) {
+                send(destinatario_socket, mensagem, strlen(mensagem), 0);
+            } else {
+                char erro[] = "Cliente não encontrado.\n";
+                send(cliente_socket, erro, strlen(erro), 0);
+            }
         }
     }
-    return -1;  // Cliente não encontrado
 }
 
-int main(){
+int main() {
     int sockfd, cliente_socket;
     struct sockaddr_in local, remoto;
     int len = sizeof(remoto);
-    char buffer[LEN];
-    
+    pthread_t thread_id;
+
     // Criar o socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if(sockfd == -1){
+    if (sockfd == -1) {
         perror("socket ");
         exit(1);
     }
@@ -53,7 +121,7 @@ int main(){
     memset(local.sin_zero, 0x0, 8);
 
     // Vincular o socket ao endereço local
-    if (bind(sockfd, (struct sockaddr*)&local, sizeof(local)) == -1){
+    if (bind(sockfd, (struct sockaddr*)&local, sizeof(local)) == -1) {
         perror("bind ");
         exit(1);
     }
@@ -63,53 +131,16 @@ int main(){
 
     while (1) {
         cliente_socket = accept(sockfd, (struct sockaddr*)&remoto, &len);
-        if(cliente_socket == -1){
+        if (cliente_socket == -1) {
             perror("accept ");
             continue;
         }
 
-        // Receber o nome do cliente
-        memset(buffer, 0x0, LEN);
-        recv(cliente_socket, buffer, LEN, 0);
-        printf("Cliente conectado: %s\n", buffer);
-
-        // Adicionar o cliente à lista
-        if (num_clientes < MAX_CLIENTS) {
-            clientes[num_clientes].socket = cliente_socket;
-            strcpy(clientes[num_clientes].name, buffer);
-            num_clientes++;
-        } else {
-            printf("Número máximo de clientes alcançado.\n");
-            close(cliente_socket);
+        // Criar uma nova thread para gerenciar o cliente
+        if (pthread_create(&thread_id, NULL, gerenciar_cliente, (void*)&cliente_socket) != 0) {
+            perror("pthread_create ");
         }
-
-        // Lidar com mensagens dos clientes
-        while (1) {
-            memset(buffer, 0x0, LEN);
-            int bytes = recv(cliente_socket, buffer, LEN, 0);
-            if (bytes <= 0) {
-                printf("Cliente desconectado.\n");
-                close(cliente_socket);
-                break;
-            }
-
-            buffer[bytes] = '\0';
-            char comando[LEN];
-            sscanf(buffer, "%s", comando);
-
-            if (strcmp(comando, "/msg") == 0) {
-                char destinatario[50];
-                char mensagem[LEN];
-                sscanf(buffer, "%s %s %[^\n]", comando, destinatario, mensagem);
-
-                int destinatario_socket = encontrar_cliente_por_nome(destinatario);
-                if (destinatario_socket != -1) {
-                    enviar_para_cliente(destinatario_socket, mensagem);
-                } else {
-                    printf("Cliente %s não encontrado.\n", destinatario);
-                }
-            }
-        }
+        pthread_detach(thread_id);
     }
 
     close(sockfd);
