@@ -5,7 +5,7 @@
 | ------------------------------ | --------- |
 | Aruan Bretas de Oliveira Filho | 12609731  |
 | Leonardo                       | XXXXXXXX  |
-| Andre Guedes                   | XXXXXXXX  |
+| Andre                          | XXXXXXXX  |
 | Fellipe Tripovichy             | XXXXXXXX  |
 
 
