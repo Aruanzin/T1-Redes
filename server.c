@@ -57,11 +57,11 @@ int main(){
         printf("Aguardando resposta do cliente...\n");
         while(1){
 
-            memset(buffer, 0, LEN);
+            memset(buffer, 0x0, LEN);
             // Receber mensagem do cliente
             slen = recv(cliente, buffer, LEN, 0);
             if(slen > 0){
-                buffer[slen] = '\0';
+                buffer[slen-1] = '\0';
                 printf("Mensagem recebida: %s\n", buffer);
                 close(cliente);
                 break;
