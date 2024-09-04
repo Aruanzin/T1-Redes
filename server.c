@@ -56,6 +56,8 @@ int main(){
     if(send(cliente, buffer, LEN, 0)){
         printf("Aguardando resposta do cliente...\n");
         while(1){
+
+            memset(buffer, 0, LEN);
             // Receber mensagem do cliente
             slen = recv(cliente, buffer, LEN, 0);
             if(slen > 0){
