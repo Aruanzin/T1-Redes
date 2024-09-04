@@ -1,33 +1,50 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>        // Inclui a função close
-#include <sys/socket.h>    // Headers para o socket
+#include <unistd.h>
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>
-#include <arpa/inet.h>     // Inclui a função inet_addr
+#include <arpa/inet.h>
 
 #define PORTA 2000
 #define LEN 1024
+#define MAX_CLIENTS 100
 
-struct sockaddr_in local;
-struct sockaddr_in remoto;
+typedef struct {
+    int socket;
+    char name[50];
+} Cliente;
+
+Cliente clientes[MAX_CLIENTS];
+int num_clientes = 0;
+
+void enviar_para_cliente(int destinatario_socket, const char* mensagem) {
+    send(destinatario_socket, mensagem, strlen(mensagem), 0);
+}
+
+int encontrar_cliente_por_nome(const char* nome) {
+    for (int i = 0; i < num_clientes; i++) {
+        if (strcmp(clientes[i].name, nome) == 0) {
+            return clientes[i].socket;
+        }
+    }
+    return -1;  // Cliente não encontrado
+}
 
 int main(){
-    int sockfd;
-    int cliente;
+    int sockfd, cliente_socket;
+    struct sockaddr_in local, remoto;
     int len = sizeof(remoto);
-    int slen;
     char buffer[LEN];
-
+    
     // Criar o socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if(sockfd == -1){
         perror("socket ");
         exit(1);
-    }else{
-        printf("Socket Criado com Sucesso\n");
     }
+    printf("Socket Criado com Sucesso\n");
 
     // Configurar o endereço local
     local.sin_family = AF_INET;
@@ -42,34 +59,59 @@ int main(){
     }
 
     // Colocar o socket em modo de escuta
-    listen(sockfd, 1);
+    listen(sockfd, MAX_CLIENTS);
 
-    // Aceitar a conexão do cliente
-    cliente = accept(sockfd, (struct sockaddr*)&remoto, &len);
-    if(cliente == -1){
-        perror("accept ");
-        exit(1);
-    }
+    while (1) {
+        cliente_socket = accept(sockfd, (struct sockaddr*)&remoto, &len);
+        if(cliente_socket == -1){
+            perror("accept ");
+            continue;
+        }
 
-    // Enviar mensagem de boas-vindas ao cliente
-    strcpy(buffer, "Welcome!\n\0");
-    if(send(cliente, buffer, LEN, 0)){
-        printf("Aguardando resposta do cliente...\n");
-        while(1){
+        // Receber o nome do cliente
+        memset(buffer, 0x0, LEN);
+        recv(cliente_socket, buffer, LEN, 0);
+        printf("Cliente conectado: %s\n", buffer);
 
+        // Adicionar o cliente à lista
+        if (num_clientes < MAX_CLIENTS) {
+            clientes[num_clientes].socket = cliente_socket;
+            strcpy(clientes[num_clientes].name, buffer);
+            num_clientes++;
+        } else {
+            printf("Número máximo de clientes alcançado.\n");
+            close(cliente_socket);
+        }
+
+        // Lidar com mensagens dos clientes
+        while (1) {
             memset(buffer, 0x0, LEN);
-            // Receber mensagem do cliente
-            slen = recv(cliente, buffer, LEN, 0);
-            if(slen > 0){
-                buffer[slen-1] = '\0';
-                printf("Mensagem recebida: %s\n", buffer);
-                close(cliente);
+            int bytes = recv(cliente_socket, buffer, LEN, 0);
+            if (bytes <= 0) {
+                printf("Cliente desconectado.\n");
+                close(cliente_socket);
                 break;
+            }
+
+            buffer[bytes] = '\0';
+            char comando[LEN];
+            sscanf(buffer, "%s", comando);
+
+            if (strcmp(comando, "/msg") == 0) {
+                char destinatario[50];
+                char mensagem[LEN];
+                sscanf(buffer, "%s %s %[^\n]", comando, destinatario, mensagem);
+
+                int destinatario_socket = encontrar_cliente_por_nome(destinatario);
+                if (destinatario_socket != -1) {
+                    enviar_para_cliente(destinatario_socket, mensagem);
+                } else {
+                    printf("Cliente %s não encontrado.\n", destinatario);
+                }
             }
         }
     }
 
-    // Fechar o socket do servidor
     close(sockfd);
     return 0;
 }
