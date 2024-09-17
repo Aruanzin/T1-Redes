@@ -6,16 +6,41 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 
 #define PORTA 2000
 #define LEN 1024
 
-int main(){
-    int sockfd;
+int sockfd;
+
+// Função para receber mensagens do servidor
+void* receber_mensagens(void* arg) {
+    char buffer[LEN];
+    int bytes;
+    
+    while(1) {
+        memset(buffer, 0x0, LEN);
+        bytes = recv(sockfd, buffer, LEN, 0);  // Recebe mensagens do servidor
+        if (bytes > 0) {
+            buffer[bytes] = '\0';  // Garante que a string seja terminada
+            printf("\nMensagem recebida: %s\n", buffer);  // Exibe a mensagem recebida
+        } else if (bytes == 0) {
+            printf("Conexão com o servidor encerrada.\n");
+            close(sockfd);
+            exit(1);
+        } else {
+            perror("recv ");
+            exit(1);
+        }
+    }
+}
+
+int main() {
     struct sockaddr_in remoto;
     int len = sizeof(remoto);
     char buffer[LEN];
     char nome[50];
+    pthread_t thread_id;
 
     printf("Digite seu nome: ");
     fgets(nome, sizeof(nome), stdin);
@@ -25,7 +50,7 @@ int main(){
 
     // Criar o socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if(sockfd == -1){
+    if (sockfd == -1) {
         perror("socket ");
         exit(1);
     }
@@ -38,7 +63,7 @@ int main(){
     memset(remoto.sin_zero, 0x0, 8);
 
     // Conectar ao servidor
-    if(connect(sockfd, (struct sockaddr*)&remoto, len) == -1){
+    if (connect(sockfd, (struct sockaddr*)&remoto, len) == -1) {
         perror("connect ");
         exit(1);
     }
@@ -46,22 +71,20 @@ int main(){
     // Enviar nome para o servidor
     send(sockfd, nome, strlen(nome), 0);
 
-    while(1){
-        // Enviar mensagem
+    // Criar uma thread para receber mensagens
+    if (pthread_create(&thread_id, NULL, receber_mensagens, NULL) != 0) {
+        perror("pthread_create ");
+        exit(1);
+    }
+
+    // Loop para enviar mensagens
+    while (1) {
         printf("Digite um comando (/msg <destinatario> <mensagem>): ");
         fgets(buffer, LEN, stdin);
         send(sockfd, buffer, strlen(buffer), 0);
-
-        // Receber resposta
-        memset(buffer, 0x0, LEN);
-        int bytes = recv(sockfd, buffer, LEN, 0);
-        if (bytes > 0) {
-            buffer[bytes] = '\0';
-            printf("Resposta do servidor: %s\n", buffer);
-        }
     }
 
-    // Fechar o socket
+    // Fechar o socket (nunca será atingido devido ao loop infinito)
     close(sockfd);
     return 0;
 }
