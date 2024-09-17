@@ -89,7 +89,7 @@ void* gerenciar_cliente(void* arg) {
             send(cliente_socket, lista_clientes, strlen(lista_clientes), 0);
         }
         // Comando de envio de mensagem /msg
-        else if (strcmp(comando, "/msg") == 0) {
+       else if (strcmp(comando, "/msg") == 0) {
             char destinatario[50];
             char mensagem[LEN];
             sscanf(buffer, "%s %s %[^\n]", comando, destinatario, mensagem);
@@ -107,7 +107,8 @@ void* gerenciar_cliente(void* arg) {
             if (destinatario_socket != -1) {
                 // Concatenar nome do remetente com a mensagem
                 char mensagem_completa[LEN];
-                snprintf(mensagem_completa, LEN - 1, "%s: %s", nome, mensagem);
+                int espaco_disponivel = LEN - strlen(nome) - 3;  // 3 espaços para ": " e '\0'
+                snprintf(mensagem_completa, LEN - 1, "%s: %.*s", nome, espaco_disponivel, mensagem);
 
                 // Enviar a mensagem formatada para o destinatário
                 send(destinatario_socket, mensagem_completa, strlen(mensagem_completa), 0);
@@ -116,6 +117,7 @@ void* gerenciar_cliente(void* arg) {
                 send(cliente_socket, erro, strlen(erro), 0);
             }
         }
+
     }
 }
 
