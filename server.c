@@ -1,26 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <pthread.h>
-
-#define PORTA 2000
-#define LEN 1024
-#define MAX_CLIENTS 100
-
-typedef struct {
-    int socket;
-    char name[50];
-} Cliente;
-
-Cliente clientes[MAX_CLIENTS];
-int num_clientes = 0;
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-
 void* gerenciar_cliente(void* arg) {
     int cliente_socket = *((int*)arg);
     char buffer[LEN];
@@ -91,58 +68,16 @@ void* gerenciar_cliente(void* arg) {
             pthread_mutex_unlock(&mutex);
 
             if (destinatario_socket != -1) {
-                send(destinatario_socket, mensagem, strlen(mensagem), 0);
+                // Concatenar o nome do remetente com a mensagem
+                char mensagem_completa[LEN];
+                snprintf(mensagem_completa, LEN, "%s: %s", nome, mensagem);
+
+                // Enviar mensagem com o nome do remetente ao destinatário
+                send(destinatario_socket, mensagem_completa, strlen(mensagem_completa), 0);
             } else {
                 char erro[] = "Cliente não encontrado.\n";
                 send(cliente_socket, erro, strlen(erro), 0);
             }
         }
     }
-}
-
-int main() {
-    int sockfd, cliente_socket;
-    struct sockaddr_in local, remoto;
-    int len = sizeof(remoto);
-    pthread_t thread_id;
-
-    // Criar o socket
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd == -1) {
-        perror("socket ");
-        exit(1);
-    }
-    printf("Socket Criado com Sucesso\n");
-
-    // Configurar o endereço local
-    local.sin_family = AF_INET;
-    local.sin_port = htons(PORTA);
-    local.sin_addr.s_addr = inet_addr("127.0.0.1");
-    memset(local.sin_zero, 0x0, 8);
-
-    // Vincular o socket ao endereço local
-    if (bind(sockfd, (struct sockaddr*)&local, sizeof(local)) == -1) {
-        perror("bind ");
-        exit(1);
-    }
-
-    // Colocar o socket em modo de escuta
-    listen(sockfd, MAX_CLIENTS);
-
-    while (1) {
-        cliente_socket = accept(sockfd, (struct sockaddr*)&remoto, &len);
-        if (cliente_socket == -1) {
-            perror("accept ");
-            continue;
-        }
-
-        // Criar uma nova thread para gerenciar o cliente
-        if (pthread_create(&thread_id, NULL, gerenciar_cliente, (void*)&cliente_socket) != 0) {
-            perror("pthread_create ");
-        }
-        pthread_detach(thread_id);
-    }
-
-    close(sockfd);
-    return 0;
 }
