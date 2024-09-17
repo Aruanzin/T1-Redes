@@ -91,7 +91,7 @@ void* gerenciar_cliente(void* arg) {
             pthread_mutex_unlock(&mutex);
 
             if (destinatario_socket != -1) {
-                send(destinatario_socket, strcat(("Mensagem de %s: ", nome) ,mensagem), strlen(mensagem), 0);
+                send(destinatario_socket, mensagem, strlen(mensagem), 0);
             } else {
                 char erro[] = "Cliente não encontrado.\n";
                 send(cliente_socket, erro, strlen(erro), 0);
