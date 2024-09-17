@@ -56,3 +56,9 @@ Este projeto implementa um sistema de chat privado onde clientes podem se conect
    gcc client.c -o client
 
    ./client
+
+3. **Alternativa Makefile**
+    Visando a facilitação na compilação de ambos os arquivos basta:
+
+    ```bash
+    make
