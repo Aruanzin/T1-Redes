@@ -91,11 +91,11 @@ void* gerenciar_cliente(void* arg) {
             pthread_mutex_unlock(&mutex);
 
             if (destinatario_socket != -1) {
-                // Concatenar o nome do remetente com a mensagem
+                // Concatenar nome do remetente com a mensagem, limitando o tamanho
                 char mensagem_completa[LEN];
-                snprintf(mensagem_completa, LEN, "%s: %s", nome, mensagem);
+                snprintf(mensagem_completa, LEN - 1, "%s: %.*s", nome, LEN - (int)strlen(nome) - 4, mensagem);
 
-                // Enviar mensagem com o nome do remetente ao destinatário
+                // Enviar a mensagem formatada para o destinatário
                 send(destinatario_socket, mensagem_completa, strlen(mensagem_completa), 0);
             } else {
                 char erro[] = "Cliente não encontrado.\n";
