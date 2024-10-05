@@ -11,7 +11,7 @@ server: server.c
 
 # Compila o client
 client: client.c
-	$(CC) client.c -o client
+	$(CC) client.c -o client $(CFLAGS)
 
 # Limpa os arquivos executáveis
 clean:
