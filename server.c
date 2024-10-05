@@ -92,6 +92,27 @@ void remover_cliente_sala(Cliente* cliente) {
     pthread_mutex_unlock(&mutex_salas);
 }
 
+// Função para excluir uma sala
+void excluir_sala(const char* nome_sala) {
+    pthread_mutex_lock(&mutex_salas);
+    for (int i = 0; i < num_salas; i++) {
+        if (strcmp(salas[i].nome, nome_sala) == 0) {
+            // Notificar os clientes da exclusão da sala
+            char msg[LEN];
+            snprintf(msg, LEN, "A sala %s foi excluída.\n", nome_sala);
+            enviar_mensagem_sala(nome_sala, msg, NULL); // Enviar para todos na sala
+
+            // Remover a sala
+            for (int j = i; j < num_salas - 1; j++) {
+                salas[j] = salas[j + 1];
+            }
+            num_salas--;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&mutex_salas);
+}
+
 // Função para gerenciar a comunicação com um cliente
 void* gerenciar_cliente(void* arg) {
     Cliente* cliente = (Cliente*)arg;
@@ -219,169 +240,50 @@ void* gerenciar_cliente(void* arg) {
                 continue;
             }
 
+            remover_cliente_sala(cliente); // Remover da sala atual, se houver
+
             pthread_mutex_lock(&mutex_salas);
-            int sala_encontrada = -1;
+            // Verificar se a sala existe
+            int sala_encontrada = 0;
             for (int i = 0; i < num_salas; i++) {
                 if (strcmp(salas[i].nome, nome_sala) == 0) {
-                    sala_encontrada = i;
+                    sala_encontrada = 1;
+                    // Adicionar cliente à sala
+                    salas[i].clientes[salas[i].num_clientes++] = cliente;
+                    strcpy(cliente->sala_atual, nome_sala);
+                    snprintf(buffer, LEN, "%s entrou na sala %s.\n", cliente->name, nome_sala);
+                    enviar_mensagem_sala(nome_sala, buffer, cliente);
                     break;
                 }
             }
-
-            if (sala_encontrada != -1) {
-                // Verificar se já está em uma sala
-                if (strlen(cliente->sala_atual) > 0) {
-                    pthread_mutex_unlock(&mutex_salas);
-                    enviar_mensagem(cliente->socket, "Você já está em uma sala. Use /leave para sair.\n");
-                    continue;
-                }
-
-                if (salas[sala_encontrada].num_clientes < MAX_CLIENTS_POR_SALA) {
-                    salas[sala_encontrada].clientes[salas[sala_encontrada].num_clientes++] = cliente;
-                    strcpy(cliente->sala_atual, nome_sala);
-                    enviar_mensagem(cliente->socket, "Entrou na sala com sucesso.\n");
-
-                    // Notificar os membros da sala
-                    char msg_sala[LEN];
-                    snprintf(msg_sala, LEN, "%s entrou na sala.\n", cliente->name);
-                    enviar_mensagem_sala(nome_sala, msg_sala, cliente);
-                } else {
-                    enviar_mensagem(cliente->socket, "Sala cheia.\n");
-                }
-            } else {
+            if (!sala_encontrada) {
                 enviar_mensagem(cliente->socket, "Sala não encontrada.\n");
             }
             pthread_mutex_unlock(&mutex_salas);
         }
         else if (strcmp(comando, "/leave") == 0) {
-            if (strlen(cliente->sala_atual) == 0) {
-                enviar_mensagem(cliente->socket, "Você não está em nenhuma sala.\n");
-                continue;
-            }
             remover_cliente_sala(cliente);
-            enviar_mensagem(cliente->socket, "Saiu da sala com sucesso.\n");
+            enviar_mensagem(cliente->socket, "Você saiu da sala atual.\n");
         }
-        else if (strcmp(comando, "/list") == 0) {
-            pthread_mutex_lock(&mutex_salas);
-            if (num_salas == 0) {
-                enviar_mensagem(cliente->socket, "Nenhuma sala disponível.\n");
-            } else {
-                char lista_salas[LEN] = "Salas disponíveis: ";
-                for (int i = 0; i < num_salas; i++) {
-                    strcat(lista_salas, salas[i].nome);
-                    if (i < num_salas - 1) {
-                        strcat(lista_salas, ", ");
-                    }
-                }
-                strcat(lista_salas, "\n");
-                enviar_mensagem(cliente->socket, lista_salas);
-            }
-            pthread_mutex_unlock(&mutex_salas);
-        }
-        else if (strcmp(comando, "/sala") == 0) {
+        else if (strcmp(comando, "/excluir") == 0) {
             char nome_sala[50];
-            char mensagem[LEN];
-            // Extrair nome da sala e a mensagem
-            sscanf(buffer, "%s %s %[^\n]", comando, nome_sala, mensagem);
-            if (strlen(nome_sala) == 0 || strlen(mensagem) == 0) {
-                enviar_mensagem(cliente->socket, "Uso correto: /sala <nome_da_sala> <mensagem>\n");
-                continue;
-            }
-
-            pthread_mutex_lock(&mutex_salas);
-            int sala_encontrada = -1;
-            for (int i = 0; i < num_salas; i++) {
-                if (strcmp(salas[i].nome, nome_sala) == 0) {
-                    sala_encontrada = i;
-                    break;
-                }
-            }
-
-            if (sala_encontrada != -1) {
-                // Verificar se o cliente está na sala
-                int na_sala = 0;
-                for (int j = 0; j < salas[sala_encontrada].num_clientes; j++) {
-                    if (salas[sala_encontrada].clientes[j]->socket == cliente->socket) {
-                        na_sala = 1;
-                        break;
-                    }
-                }
-
-                if (na_sala) {
-                    char mensagem_completa[LEN];
-                    snprintf(mensagem_completa, LEN, "[%s][%s]: %s\n", nome_sala, cliente->name, mensagem);
-                    enviar_mensagem_sala(nome_sala, mensagem_completa, cliente);
-                } else {
-                    enviar_mensagem(cliente->socket, "Você não está nessa sala.\n");
-                }
-            } else {
-                enviar_mensagem(cliente->socket, "Sala não encontrada.\n");
-            }
-            pthread_mutex_unlock(&mutex_salas);
+            sscanf(buffer, "%s %s", comando, nome_sala);
+            excluir_sala(nome_sala);
+            enviar_mensagem(cliente->socket, "Comando de exclusão enviado.\n");
         }
-        else if (strcmp(comando, "/online") == 0) {
-            pthread_mutex_lock(&mutex_clientes);
-            if (num_clientes == 0) {
-                enviar_mensagem(cliente->socket, "Nenhum cliente online.\n");
-            } else {
-                char lista_online[LEN] = "Clientes online: ";
-                for (int i = 0; i < num_clientes; i++) {
-                    strcat(lista_online, clientes[i]->name);
-                    if (i < num_clientes - 1) {
-                        strcat(lista_online, ", ");
-                    }
-                }
-                strcat(lista_online, "\n");
-                enviar_mensagem(cliente->socket, lista_online);
-            }
-            pthread_mutex_unlock(&mutex_clientes);
-        }
-        else if (strcmp(comando, "/msg") == 0) {
-            char destinatario[50];
-            char mensagem[LEN];
-            sscanf(buffer, "%s %s %[^\n]", comando, destinatario, mensagem);
-            if (strlen(destinatario) == 0 || strlen(mensagem) == 0) {
-                enviar_mensagem(cliente->socket, "Uso correto: /msg <destinatario> <mensagem>\n");
-                continue;
-            }
-
-            pthread_mutex_lock(&mutex_clientes);
-            int destinatario_socket = -1;
-            for (int i = 0; i < num_clientes; i++) {
-                if (strcmp(clientes[i]->name, destinatario) == 0) {
-                    destinatario_socket = clientes[i]->socket;
-                    break;
-                }
-            }
-            pthread_mutex_unlock(&mutex_clientes);
-
-            if (destinatario_socket != -1) {
-                char mensagem_completa[LEN];
-                snprintf(mensagem_completa, LEN, "[Privado][%s]: %s\n", cliente->name, mensagem);
-                enviar_mensagem(destinatario_socket, mensagem_completa);
-                enviar_mensagem(cliente->socket, "Mensagem enviada.\n");
-            } else {
-                enviar_mensagem(cliente->socket, "Cliente não encontrado.\n");
-            }
+        else if (strcmp(comando, "/rename") == 0) {
+            char novo_nome[50];
+            sscanf(buffer, "%s %s", comando, novo_nome);
+            strcpy(cliente->name, novo_nome);
+            char msg[LEN];
+            snprintf(msg, LEN, "Seu nome foi alterado para %s.\n", novo_nome);
+            enviar_mensagem(cliente->socket, msg);
         }
         else {
-            // Mensagem padrão (para salas, se o cliente estiver em uma)
-            if (strlen(cliente->sala_atual) > 0) {
-                char mensagem_completa[LEN];
-                snprintf(mensagem_completa, LEN, "[%s][%s]: %s\n", cliente->sala_atual, cliente->name, buffer);
-                enviar_mensagem_sala(cliente->sala_atual, mensagem_completa, cliente);
-            } else {
-                // Enviar para todos (broadcast)
-                char mensagem_completa[LEN];
-                snprintf(mensagem_completa, LEN, "[%s]: %s\n", cliente->name, buffer);
-                pthread_mutex_lock(&mutex_clientes);
-                for (int i = 0; i < num_clientes; i++) {
-                    if (clientes[i]->socket != cliente->socket) {
-                        enviar_mensagem(clientes[i]->socket, mensagem_completa);
-                    }
-                }
-                pthread_mutex_unlock(&mutex_clientes);
-            }
+            // Enviar a mensagem para a sala atual
+            char msg[LEN];
+            snprintf(msg, LEN, "%s: %s", cliente->name, buffer);
+            enviar_mensagem_sala(cliente->sala_atual, msg, cliente);
         }
     }
 
@@ -389,72 +291,51 @@ void* gerenciar_cliente(void* arg) {
 }
 
 int main() {
-    int sockfd, cliente_socket;
-    struct sockaddr_in local, remoto;
-    socklen_t len = sizeof(remoto);
-    pthread_t thread_id;
+    int servidor_socket, cliente_socket;
+    struct sockaddr_in servidor_addr, cliente_addr;
+    socklen_t cliente_len = sizeof(cliente_addr);
 
-    // Criar o socket
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd == -1) {
-        perror("socket ");
-        exit(1);
+    // Criar socket do servidor
+    servidor_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (servidor_socket < 0) {
+        perror("socket");
+        exit(EXIT_FAILURE);
     }
-    printf("Socket Criado com Sucesso\n");
 
-    // Configurar o endereço local
-    local.sin_family = AF_INET;
-    local.sin_port = htons(PORTA);
-    local.sin_addr.s_addr = inet_addr("127.0.0.1"); // Para aceitar conexões de qualquer IP, use INADDR_ANY
-    memset(local.sin_zero, 0x0, 8);
+    // Configurar o endereço do servidor
+    servidor_addr.sin_family = AF_INET;
+    servidor_addr.sin_addr.s_addr = INADDR_ANY;
+    servidor_addr.sin_port = htons(PORTA);
 
-    // Vincular o socket ao endereço local
-    if (bind(sockfd, (struct sockaddr*)&local, sizeof(local)) == -1) {
-        perror("bind ");
-        close(sockfd);
-        exit(1);
+    // Associar o socket a um endereço
+    if (bind(servidor_socket, (struct sockaddr*)&servidor_addr, sizeof(servidor_addr)) < 0) {
+        perror("bind");
+        close(servidor_socket);
+        exit(EXIT_FAILURE);
     }
-    printf("Bind realizado com sucesso na porta %d\n", PORTA);
 
-    // Colocar o socket em modo de escuta
-    if (listen(sockfd, MAX_CLIENTS) == -1) {
-        perror("listen ");
-        close(sockfd);
-        exit(1);
-    }
-    printf("Servidor escutando na porta %d...\n", PORTA);
+    // Ouvir por conexões
+    listen(servidor_socket, 5);
+    printf("Servidor ouvindo na porta %d...\n", PORTA);
 
     while (1) {
-        // Aceitar uma nova conexão
-        cliente_socket = accept(sockfd, (struct sockaddr*)&remoto, &len);
-        if (cliente_socket == -1) {
-            perror("accept ");
+        // Aceitar nova conexão
+        cliente_socket = accept(servidor_socket, (struct sockaddr*)&cliente_addr, &cliente_len);
+        if (cliente_socket < 0) {
+            perror("accept");
             continue;
         }
 
-        // Alocar memória para o novo cliente
+        // Criar novo cliente
         Cliente* novo_cliente = (Cliente*)malloc(sizeof(Cliente));
-        if (!novo_cliente) {
-            perror("malloc ");
-            close(cliente_socket);
-            continue;
-        }
         novo_cliente->socket = cliente_socket;
-        strcpy(novo_cliente->name, "");
-        strcpy(novo_cliente->sala_atual, "");
+        memset(novo_cliente->sala_atual, 0, sizeof(novo_cliente->sala_atual)); // Inicializar a sala atual
 
-        // Criar uma nova thread para gerenciar o cliente
-        if (pthread_create(&thread_id, NULL, gerenciar_cliente, (void*)novo_cliente) != 0) {
-            perror("pthread_create ");
-            close(cliente_socket);
-            free(novo_cliente);
-            continue;
-        }
-
-        // Desanexar a thread para liberar recursos automaticamente quando terminar
-        pthread_detach(thread_id);
+        pthread_t tid;
+        pthread_create(&tid, NULL, gerenciar_cliente, (void*)novo_cliente);
     }
 
-    close(sockfd);
+    // Fechar o socket do servidor
+    close(servidor_socket);
     return 0;
 }
