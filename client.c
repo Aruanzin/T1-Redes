@@ -1,81 +1,104 @@
 // client.c
 
-#include "client.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <pthread.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 
-// Array global para armazenar clientes
-static Cliente* clientes[MAX_CLIENTS];
-static int num_clientes = 0;
-static pthread_mutex_t mutex_clientes = PTHREAD_MUTEX_INITIALIZER;
+#define PORTA 2000
+#define LEN 1024
 
-Cliente* criar_cliente(int socket) {
-    Cliente* cliente = (Cliente*)malloc(sizeof(Cliente));
-    if (!cliente) {
-        perror("malloc");
-        return NULL;
+int sockfd;
+
+// Função para receber mensagens do servidor
+void* receber_mensagens(void* arg) {
+    char buffer[LEN];
+    int bytes;
+
+    while (1) {
+        memset(buffer, 0x0, LEN);
+        bytes = recv(sockfd, buffer, LEN, 0);  // Recebe mensagens do servidor
+        if (bytes > 0) {
+            buffer[bytes] = '\0';  // Garante que a string seja terminada
+            printf("\n%s", buffer); // Exibe a mensagem recebida
+            printf("Digite um comando: "); // Prompt para o usuário continuar
+            fflush(stdout);
+        } else if (bytes == 0) {
+            printf("Conexão com o servidor encerrada.\n");
+            close(sockfd);
+            exit(1);
+        } else {
+            perror("recv ");
+            close(sockfd);
+            exit(1);
+        }
     }
-    cliente->socket = socket;
-    memset(cliente->name, 0, NAME_LEN);
-    memset(cliente->sala_atual, 0, SALA_LEN);
-    return cliente;
 }
 
-void adicionar_cliente(Cliente* cliente) {
-    pthread_mutex_lock(&mutex_clientes);
-    if (num_clientes < MAX_CLIENTS) {
-        clientes[num_clientes++] = cliente;
-    }
-    pthread_mutex_unlock(&mutex_clientes);
-}
+int main() {
+    struct sockaddr_in remoto;
+    socklen_t len = sizeof(remoto);
+    char buffer[LEN];
+    char nome[50];
+    pthread_t thread_id;
 
-void remover_cliente(int socket) {
-    pthread_mutex_lock(&mutex_clientes);
-    int pos = -1;
-    for (int i = 0; i < num_clientes; i++) {
-        if (clientes[i]->socket == socket) {
-            pos = i;
+    printf("Digite seu nome: ");
+    fgets(nome, sizeof(nome), stdin);
+    nome[strcspn(nome, "\n")] = '\0';  // Remove o caractere de nova linha
+
+    // Criar o socket
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd == -1) {
+        perror("socket ");
+        exit(1);
+    }
+    printf("Socket Criado com Sucesso\n");
+
+    // Configurar o endereço remoto
+    remoto.sin_family = AF_INET;
+    remoto.sin_port = htons(PORTA);
+    remoto.sin_addr.s_addr = inet_addr("127.0.0.1"); // Altere para o IP do servidor, se necessário
+    memset(remoto.sin_zero, 0x0, 8);
+
+    // Conectar ao servidor
+    if (connect(sockfd, (struct sockaddr*)&remoto, len) == -1) {
+        perror("connect ");
+        close(sockfd);
+        exit(1);
+    }
+    printf("Conectado ao servidor.\n");
+
+    // Enviar nome para o servidor
+    send(sockfd, nome, strlen(nome), 0);
+
+    // Criar uma thread para receber mensagens
+    if (pthread_create(&thread_id, NULL, receber_mensagens, NULL) != 0) {
+        perror("pthread_create ");
+        close(sockfd);
+        exit(1);
+    }
+
+    // Desanexar a thread para não precisar dar join
+    pthread_detach(thread_id);
+
+    // Loop para enviar mensagens
+    while (1) {
+        printf("Digite um comando: ");
+        fgets(buffer, LEN, stdin);
+        // Remove o caractere de nova linha
+        buffer[strcspn(buffer, "\n")] = '\0';
+        // Envia o comando para o servidor
+        if (send(sockfd, buffer, strlen(buffer), 0) < 0) {
+            perror("send");
             break;
         }
     }
-    if (pos != -1) {
-        free(clientes[pos]);
-        for (int i = pos; i < num_clientes - 1; i++) {
-            clientes[i] = clientes[i + 1];
-        }
-        num_clientes--;
-    }
-    pthread_mutex_unlock(&mutex_clientes);
-}
 
-Cliente* buscar_cliente_por_nome(const char* nome) {
-    Cliente* resultado = NULL;
-    pthread_mutex_lock(&mutex_clientes);
-    for (int i = 0; i < num_clientes; i++) {
-        if (strcmp(clientes[i]->name, nome) == 0) {
-            resultado = clientes[i];
-            break;
-        }
-    }
-    pthread_mutex_unlock(&mutex_clientes);
-    return resultado;
-}
-
-void listar_clientes_online(char* buffer, size_t size) {
-    pthread_mutex_lock(&mutex_clientes);
-    if (num_clientes == 0) {
-        snprintf(buffer, size, "Nenhum cliente online.\n");
-    } else {
-        strcpy(buffer, "Clientes online: ");
-        for (int i = 0; i < num_clientes; i++) {
-            strcat(buffer, clientes[i]->name);
-            if (i < num_clientes - 1) {
-                strcat(buffer, ", ");
-            }
-        }
-        strcat(buffer, "\n");
-    }
-    pthread_mutex_unlock(&mutex_clientes);
+    // Fechar o socket (nunca será atingido devido ao loop infinito)
+    close(sockfd);
+    return 0;
 }

@@ -1,17 +1,18 @@
-# Makefile
-
+# Variáveis
 CC = gcc
-CFLAGS = -Wall -pthread
-DEPS = client.h room.h utils.h server.h
-OBJ = main.o server.o client.o room.o utils.o
+CFLAGS = -lpthread
 
-%.o: %.c $(DEPS)
-	$(CC) $(CFLAGS) -c -o $@ $<
+# Alvos
+all: server client
 
-chat_server: $(OBJ)
-	$(CC) $(CFLAGS) -o chat_server $(OBJ)
+# Compila o server
+server: server.c
+	$(CC) -o server server.c $(CFLAGS)
 
-.PHONY: clean
+# Compila o client
+client: client.c
+	$(CC) client.c -o client $(CFLAGS)
 
+# Limpa os arquivos executáveis
 clean:
-	rm -f *.o chat_server
+	rm -f server client
