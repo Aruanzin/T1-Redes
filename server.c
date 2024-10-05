@@ -282,14 +282,19 @@ void* gerenciar_cliente(void* arg) {
         else {
             // Enviar a mensagem para a sala atual
             char msg[LEN];
-            snprintf(msg, LEN, "%s: %s", cliente->name, buffer);
-            enviar_mensagem_sala(cliente->sala_atual, msg, cliente);
+            int nome_len = strlen(cliente->name);
+            int buffer_len = strlen(buffer);
+            if (nome_len + buffer_len + 2 < LEN) { // +2 para o ": " e o '\0'
+                snprintf(msg, LEN, "%s: %s", cliente->name, buffer);
+                enviar_mensagem_sala(cliente->sala_atual, msg, cliente);
+            } else {
+                enviar_mensagem(cliente->socket, "Mensagem muito longa para ser enviada.\n");
+            }
         }
     }
 
     return NULL;
 }
-
 int main() {
     int servidor_socket, cliente_socket;
     struct sockaddr_in servidor_addr, cliente_addr;
