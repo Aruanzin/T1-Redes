@@ -4,9 +4,10 @@
 | Autor                          | NUSP      |
 | ------------------------------ | --------- |
 | Aruan Bretas de Oliveira Filho | 12609731  |
-| Leonardo                       | XXXXXXXX  |
-| Andre                          | XXXXXXXX  |
-| Fellipe Tripovichy             | XXXXXXXX  |
+| Leonardo Rodrogues de Sousa    | 10716380  |
+| Andre Luiz de Souza            | 5631500   |
+| Fellipe Tripovichy             | 9850332   |
+| Roberto Severo Utagawa         | 12690712  |
 
 
 # Chat Privado com Servidor e Cliente em C
@@ -53,7 +54,7 @@ Este projeto implementa um sistema de chat privado onde clientes podem se conect
     Compile e execute o cliente com os seguintes comandos:
 
    ```bash
-   gcc client.c -o client
+   gcc client.c -o client -lpthread
 
    ./client
 
@@ -62,3 +63,19 @@ Este projeto implementa um sistema de chat privado onde clientes podem se conect
 
     ```bash
     make
+    ```
+
+## Informações Relevantes
+
+  * O projeto foi realizado para rodar em um linux, sistemas windows precisariam de bibliotecas diferentes e até externas
+  * A conexão como os testes foram feitos apenas em uma máquina, o endereço da conexão foi meu localhost
+  * Porta utilizada 2000 (verificar disponibilidade dela)
+  * Ai está algumas funcionalidades:
+
+    * "/online": lista quem está conectado no servidor
+    * "/msg destinatario mensagem": envia mensagem no privado para alguém
+    * "/create nome": cria sala com nome desejado
+    * "/join nome": entra na sala que deseja se existir
+    * "/sala nome mensagem": manda mensagem na sala que deseja
+    * "/leave nome": sai de sala desejavada
+    * "/list": lista salas existentes 
